@@ -19,6 +19,8 @@ load_dotenv(ROOT_DIR / ".env")
 
 import market as mk  # noqa: E402
 import feeds  # noqa: E402
+import channels as chn  # noqa: E402
+import calendar_data as cal  # noqa: E402
 from ai_assess import run_assessment  # noqa: E402
 
 client = AsyncIOMotorClient(os.environ["MONGO_URL"])
@@ -103,6 +105,7 @@ class SetupIn(BaseModel):
 
 
 class Setup(BaseDocument, SetupIn):
+    ext_key: Optional[str] = None
     created_at: str = Field(default_factory=now_iso)
 
 
@@ -247,7 +250,7 @@ async def market_overview(market: Market = "ASX"):
         fh = None
     return {"status": status, "index": index, "index_name": cfg["index_name"], "fetched_at": now_iso(),
             "session": mk.session_info(market), "first_hour": fh,
-            "events_note": "Only exchange holidays and early closes are shown. Economic and earnings calendars are not connected (no free, key-less source)."}
+            "events_note": "Economic and company events are listed in the calendar below."}
 
 
 @api.get("/sessions")
@@ -295,13 +298,15 @@ async def assess(body: AssessIn):
     if q.get("instrument_type") not in (None, "EQUITY", "ETF"):
         raise HTTPException(422, f"{symbol} is not an equity ({q.get('instrument_type')}). TradeWise covers equities only.")
     levels = mk.indicators(daily)
-    news = await mk.news(symbol)
+    news, company_ev, econ = await asyncio.gather(mk.news(symbol), cal.company_events(symbol), cal.economic(body.market))
     context = {
         "market": body.market, "symbol": symbol, "name": q["name"], "currency": q["currency"],
         "latest_quote": {k: q[k] for k in ("price", "previous_close", "change_pct", "day_high", "day_low", "volume", "as_of")},
         "data_note": "Delayed free data; may lag the live market.",
         "indicators_6mo_daily": levels, "last_10_daily_closes": [c["c"] for c in daily[-10:]],
         "news": news, "user_trade": body.model_dump(),
+        "scheduled_company_events": company_ev if company_ev is not None else "unavailable",
+        "scheduled_economic_events_this_week": (econ or [])[:12] if econ is not None else "unavailable",
         "market_context": "ASX stock: do not apply US trader commentary without evidence." if body.market == "ASX" else "US equity.",
     }
     try:
@@ -708,20 +713,343 @@ async def delete_trade(tid: str):
     r = await db.trades.delete_one({"_id": oid(tid)})
     if not r.deleted_count:
         raise HTTPException(404, "Trade not found")
+    await db.alerts.delete_many({"ref_id": tid})
     return {"ok": True}
+
+
+# ---------- Watchlist ----------
+class WatchIn(BaseModel):
+    ticker: str
+    market: Market = "ASX"
+    note: Optional[str] = None
+    alert_above: Optional[float] = Field(default=None, gt=0)
+    alert_below: Optional[float] = Field(default=None, gt=0)
+
+
+class WatchItem(BaseDocument, WatchIn):
+    symbol: str
+    name: Optional[str] = None
+    created_at: str = Field(default_factory=now_iso)
+
+
+class WatchUpdate(BaseModel):
+    note: Optional[str] = None
+    alert_above: Optional[float] = Field(default=None, gt=0)
+    alert_below: Optional[float] = Field(default=None, gt=0)
+    clear_above: bool = False
+    clear_below: bool = False
+
+
+def check_watch_levels(above, below, price):
+    if above and price and above <= price:
+        raise HTTPException(422, f"'Alert if rises to' must be above the current price ({price}).")
+    if below and price and below >= price:
+        raise HTTPException(422, f"'Alert if falls to' must be below the current price ({price}).")
+
+
+async def next_event(symbol):
+    evs = await cal.company_events(symbol) or []
+    now = datetime.now(timezone.utc)
+    upcoming = sorted((e for e in evs if dparser.parse(e["date"]) >= now - timedelta(days=1)), key=lambda e: e["date"])
+    return upcoming[0] if upcoming else None
+
+
+@api.get("/watchlist")
+async def list_watch(market: Market = "ASX"):
+    items = [WatchItem.from_mongo(d).out() for d in await db.watchlist.find({"market": market}).sort("created_at", 1).to_list(200)]
+    qs = await quotes_for([i["symbol"] for i in items])
+    evs = await asyncio.gather(*(next_event(i["symbol"]) for i in items))
+    for i, ev in zip(items, evs):
+        q = qs.get(i["symbol"])
+        i.update(price=q["price"] if q else None, change_pct=q["change_pct"] if q else None, as_of=q["as_of"] if q else None,
+                 currency=q["currency"] if q else mk.MARKETS[market]["currency"], next_event=ev)
+    return items
+
+
+@api.post("/watchlist")
+async def add_watch(body: WatchIn):
+    try:
+        symbol = mk.normalize(body.ticker, body.market)
+        q = await mk.quote(symbol)
+    except mk.DataError as e:
+        data_error(e)
+    if q.get("instrument_type") not in (None, "EQUITY", "ETF"):
+        raise HTTPException(422, f"{symbol} is not an equity.")
+    if await db.watchlist.find_one({"symbol": symbol}):
+        raise HTTPException(409, f"{body.ticker.upper()} is already on your watchlist.")
+    check_watch_levels(body.alert_above, body.alert_below, q["price"])
+    w = WatchItem(**body.model_dump(), symbol=symbol, name=q["name"])
+    w.ticker = w.ticker.upper().lstrip("$").replace(".AX", "")
+    r = await db.watchlist.insert_one(w.to_mongo())
+    w.id = str(r.inserted_id)
+    return w.out()
+
+
+@api.patch("/watchlist/{wid}")
+async def update_watch(wid: str, body: WatchUpdate):
+    upd = body.model_dump(exclude_none=True, exclude={"clear_above", "clear_below"})
+    if body.clear_above:
+        upd["alert_above"] = None
+    if body.clear_below:
+        upd["alert_below"] = None
+    cur = await db.watchlist.find_one({"_id": oid(wid)})
+    if not cur:
+        raise HTTPException(404, "Watchlist item not found")
+    q = await mk.safe_quote(cur["symbol"])
+    check_watch_levels(body.alert_above, body.alert_below, q["price"] if q else None)
+    r = await db.watchlist.update_one({"_id": oid(wid)}, {"$set": upd})
+    if not r.matched_count:
+        raise HTTPException(404, "Watchlist item not found")
+    return WatchItem.from_mongo(await db.watchlist.find_one({"_id": oid(wid)})).out()
+
+
+@api.delete("/watchlist/{wid}")
+async def delete_watch(wid: str):
+    r = await db.watchlist.delete_one({"_id": oid(wid)})
+    if not r.deleted_count:
+        raise HTTPException(404, "Watchlist item not found")
+    await db.alerts.delete_many({"ref_id": wid})
+    return {"ok": True}
+
+
+# ---------- Alerts ----------
+class Alert(BaseDocument):
+    key: str
+    ref_type: str
+    ref_id: str
+    ticker: str
+    market: str
+    label: str
+    level: float
+    direction: str
+    price: float
+    currency: Optional[str] = None
+    price_as_of: Optional[str] = None
+    triggered_at: str = Field(default_factory=now_iso)
+    seen: bool = False
+
+
+async def check_alerts():
+    rules = []
+    for t in await db.trades.find({"status": "open", "kind": {"$in": ["actual", "simulated"]}}).to_list(500):
+        long = t.get("direction", "long") == "long"
+        kind = "Practice" if t["kind"] == "simulated" else "Actual"
+        if t.get("stop"):
+            rules.append((f"trade:{t['_id']}:stop:{t['stop']}", "trade", str(t["_id"]), t, f"{kind} trade hit stop-loss", t["stop"], "below" if long else "above"))
+        if t.get("target"):
+            rules.append((f"trade:{t['_id']}:target:{t['target']}", "trade", str(t["_id"]), t, f"{kind} trade hit target", t["target"], "above" if long else "below"))
+    for w in await db.watchlist.find().to_list(500):
+        if w.get("alert_above"):
+            rules.append((f"watch:{w['_id']}:above:{w['alert_above']}", "watch", str(w["_id"]), w, "Watchlist: rose to your level", w["alert_above"], "above"))
+        if w.get("alert_below"):
+            rules.append((f"watch:{w['_id']}:below:{w['alert_below']}", "watch", str(w["_id"]), w, "Watchlist: fell to your level", w["alert_below"], "below"))
+    if not rules:
+        return 0
+    existing = {d["key"] for d in await db.alerts.find({"key": {"$in": [r[0] for r in rules]}}, {"key": 1}).to_list(2000)}
+    rules = [r for r in rules if r[0] not in existing]
+    qs = await quotes_for([r[3]["symbol"] for r in rules])
+    n = 0
+    for key, rtype, rid, doc, label, level, direction in rules:
+        q = qs.get(doc["symbol"])
+        if not q:
+            continue
+        if (q["price"] >= level) if direction == "above" else (q["price"] <= level):
+            a = Alert(key=key, ref_type=rtype, ref_id=rid, ticker=doc["ticker"], market=doc["market"], label=label, level=level,
+                      direction=direction, price=q["price"], currency=q["currency"], price_as_of=q["as_of"])
+            r = await db.alerts.update_one({"key": key}, {"$setOnInsert": a.to_mongo()}, upsert=True)
+            n += 1 if r.upserted_id else 0
+    return n
+
+
+@api.get("/alerts")
+async def list_alerts():
+    docs = await db.alerts.find().sort("triggered_at", -1).to_list(50)
+    return {"alerts": [Alert.from_mongo(d).out() for d in docs], "unseen": await db.alerts.count_documents({"seen": False}),
+            "note": "Checked every 2 minutes against delayed prices. Confirm with your broker's live price."}
+
+
+@api.post("/alerts/check")
+async def run_alert_check():
+    return {"new": await check_alerts()}
+
+
+@api.post("/alerts/seen")
+async def alerts_seen():
+    await db.alerts.update_many({"seen": False}, {"$set": {"seen": True}})
+    return {"ok": True}
+
+
+# ---------- Live channels ----------
+class ChannelIn(BaseModel):
+    platform: Literal["telegram", "discord"]
+    mode: Literal["public", "bot"] = "public"
+    handle: str = Field(min_length=2, max_length=100)
+    name: str = Field(min_length=1, max_length=80)
+    market: Market
+
+
+class Channel(BaseDocument, ChannelIn):
+    source_id: Optional[str] = None
+    active: bool = True
+    last_message_id: int = 0
+    tg_offset: int = 0
+    last_checked: Optional[str] = None
+    last_error: Optional[str] = None
+    imported_count: int = 0
+    created_at: str = Field(default_factory=now_iso)
+
+
+async def fetch_channel(ch: Channel):
+    if ch.platform == "telegram" and ch.mode == "public":
+        return await chn.telegram_public(ch.handle), None
+    if ch.platform == "telegram":
+        return await chn.telegram_bot(ch.handle, ch.tg_offset)
+    return await chn.discord_messages(ch.handle, str(ch.last_message_id) if ch.last_message_id else None), None
+
+
+async def sync_channel(ch: Channel):
+    upd = {"last_checked": now_iso()}
+    try:
+        msgs, offset = await fetch_channel(ch)
+    except chn.ChannelError as e:
+        await db.channels.update_one({"_id": oid(ch.id)}, {"$set": {**upd, "last_error": str(e)}})
+        return {"imported": 0, "error": str(e)}
+    if offset is not None:
+        upd["tg_offset"] = offset
+    new = sorted((m for m in msgs if m["id"] > ch.last_message_id), key=lambda m: m["id"])[-30:]
+    n = 0
+    for m in new:
+        for c in feeds.parse_messages(m["text"], ch.platform)[:3]:
+            try:
+                mk.normalize(c["ticker"], ch.market)
+            except mk.DataError:
+                continue
+            key = f"{ch.id}:{m['id']}:{c['ticker']}"
+            if await db.setups.find_one({"ext_key": key}):
+                continue
+            s = Setup(source_id=ch.source_id, source_name=ch.name, ticker=c["ticker"].replace(".AX", ""), market=ch.market,
+                      direction=c["direction"], reported_text=m["text"][:600], entry=c["entry"], stop=c["stop"], target=c["target"],
+                      exit=c["exit"], source_url=m["link"], published_at=m["published_at"], origin=ch.platform, ext_key=key)
+            await db.setups.insert_one(s.to_mongo())
+            n += 1
+    if new:
+        upd["last_message_id"] = new[-1]["id"]
+    await db.channels.update_one({"_id": oid(ch.id)}, {"$set": {**upd, "last_error": None}, "$inc": {"imported_count": n}})
+    return {"imported": n, "messages_checked": len(new), "error": None}
+
+
+@api.get("/channels")
+async def list_channels():
+    docs = await db.channels.find().sort("created_at", 1).to_list(100)
+    return {"channels": [Channel.from_mongo(d).out() for d in docs], "tokens": chn.tokens_status()}
+
+
+@api.post("/channels")
+async def add_channel(body: ChannelIn):
+    if body.platform == "discord":
+        body.mode = "bot"
+    body.handle = body.handle.strip().rstrip("/").split("/")[-1].lstrip("@")
+    if body.platform == "telegram" and body.mode == "public":
+        body.handle = body.handle.lower()
+    if await db.channels.find_one({"platform": body.platform, "mode": body.mode, "handle": body.handle}):
+        raise HTTPException(409, "That channel is already connected.")
+    tokens = chn.tokens_status()
+    if body.mode == "bot" and not tokens["telegram_bot" if body.platform == "telegram" else "discord_bot"]:
+        raise HTTPException(422, f"{body.platform.title()} bot token isn't set up yet. Public Telegram channels work without one.")
+    ch = Channel(**body.model_dump())
+    try:
+        await fetch_channel(ch)
+    except chn.ChannelError as e:
+        data_error(e)
+    url = f"https://t.me/{body.handle}" if body.platform == "telegram" and body.mode == "public" else f"{body.platform}:{body.handle}"
+    src = Source(slug=f"{body.platform}-{body.handle.lower()}", name=body.name, url=url,
+                 region="AU" if body.market == "ASX" else "US", feed_type=body.platform.title())
+    existing = await db.sources.find_one({"slug": src.slug})
+    if existing:
+        await db.sources.update_one({"_id": existing["_id"]}, {"$set": {"name": body.name, "region": src.region, "followed": True}})
+    ch.source_id = str(existing["_id"]) if existing else str((await db.sources.insert_one(src.to_mongo())).inserted_id)
+    r = await db.channels.insert_one(ch.to_mongo())
+    ch.id = str(r.inserted_id)
+    result = await sync_channel(ch)
+    return {**Channel.from_mongo(await db.channels.find_one({"_id": r.inserted_id})).out(), "sync": result}
+
+
+@api.post("/channels/{cid}/sync")
+async def sync_one(cid: str):
+    ch = Channel.from_mongo(await db.channels.find_one({"_id": oid(cid)}))
+    if not ch:
+        raise HTTPException(404, "Channel not found")
+    return await sync_channel(ch)
+
+
+@api.patch("/channels/{cid}")
+async def toggle_channel(cid: str, active: bool):
+    r = await db.channels.update_one({"_id": oid(cid)}, {"$set": {"active": active}})
+    if not r.matched_count:
+        raise HTTPException(404, "Channel not found")
+    return {"ok": True}
+
+
+@api.delete("/channels/{cid}")
+async def delete_channel(cid: str):
+    ch = await db.channels.find_one_and_delete({"_id": oid(cid)})
+    if not ch:
+        raise HTTPException(404, "Channel not found")
+    if ch.get("source_id") and not await db.channels.find_one({"source_id": ch["source_id"]}):
+        await db.sources.delete_one({"_id": oid(ch["source_id"]), "feed_type": {"$in": ["Telegram", "Discord"]}})
+    return {"ok": True}
+
+
+# ---------- Calendar ----------
+@api.get("/calendar")
+async def calendar(market: Market = "ASX"):
+    syms = {d["symbol"] for d in await db.watchlist.find({"market": market}).to_list(200)}
+    syms |= {d["symbol"] for d in await db.trades.find({"market": market, "status": "open"}).to_list(500)}
+    econ, comp = await asyncio.gather(cal.economic(market), asyncio.gather(*(cal.company_events(s) for s in syms)))
+    now = datetime.now(timezone.utc)
+    company = sorted((e for evs in comp if evs for e in evs if now - timedelta(days=1) <= dparser.parse(e["date"]) <= now + timedelta(days=45)),
+                     key=lambda e: e["date"])
+    for e in company:
+        e["ticker"] = e["symbol"].replace(".AX", "")
+    holidays = mk.market_status(market)["upcoming"]
+    return {"economic": econ or [], "economic_available": econ is not None, "company": company, "holidays": holidays,
+            "company_coverage": len(syms), "fetched_at": now_iso(),
+            "sources": "Economic: ForexFactory weekly calendar (this week only). Company dates: Yahoo Finance (may be estimates)."}
+
+
+# ---------- Background ----------
+async def background_loop():
+    while True:
+        try:
+            await check_alerts()
+        except Exception:
+            logger.exception("alert check error")
+        for d in await db.channels.find({"active": True}).to_list(100):
+            try:
+                await sync_channel(Channel.from_mongo(d))
+            except Exception:
+                logger.exception("channel sync error %s", d.get("name"))
+        await asyncio.sleep(120)
 
 
 # ---------- Today ----------
 @api.get("/today")
 async def today(market: Market = "ASX"):
-    overview, setups, trades, trend = await asyncio.gather(
-        market_overview(market), list_setups(market=market), list_trades(market=market), mk.trending(market))
-    followed = {str(d["_id"]) for d in await db.sources.find({"followed": True}).to_list(100)}
+    overview, setups, trades, trend, watch = await asyncio.gather(
+        market_overview(market), list_setups(market=market), list_trades(market=market), mk.trending(market), list_watch(market))
+    followed_docs = await db.sources.find({"followed": True}).to_list(100)
+    followed = {str(d["_id"]) for d in followed_docs}
     watching = [s for s in setups if s["status"] == "Source verified" and (not s.get("source_id") or s["source_id"] in followed)][:3]
     positions = [t for t in trades if t["kind"] == "actual" and t["status"] == "open"]
     review = [t for t in trades if t["needs_review"]]
     reviewing = []
     seen = set()
+    for w in watch:
+        seen.add(w["ticker"])
+        ev = w.get("next_event")
+        reviewing.append({"ticker": w["ticker"], "why": "On your watchlist" + (f" · {w['note']}" if w.get("note") else ""),
+                          "freshness": w["as_of"], "price": w["price"], "change_pct": w["change_pct"], "watch": True,
+                          "uncertainty": f"Next: {ev['title']} {ev['date'][:10]}" if ev else "No upcoming company event found.",})
     for s in watching:
         if s["ticker"] not in seen:
             seen.add(s["ticker"])
@@ -738,8 +1066,10 @@ async def today(market: Market = "ASX"):
         reviewing.append({"ticker": tk, "why": "Trending in Yahoo Finance searches (attention, not quality)",
                           "freshness": q["as_of"], "price": q["price"], "change_pct": q["change_pct"],
                           "uncertainty": "Search popularity says nothing about direction. Check news before acting."})
-    return {"overview": overview, "watching": watching, "reviewing": reviewing[:5], "positions": positions,
-            "needs_review": review, "us_sources_note": "Your current sources mainly cover US stocks. Their commentary is not shown as applicable to ASX." if market == "ASX" else None}
+    has_au = any(d.get("region") in ("AU", "Global") for d in followed_docs)
+    note = None if has_au or market != "ASX" else "Your followed sources mainly cover US stocks. Their commentary is not shown as applicable to ASX."
+    return {"overview": overview, "watching": watching, "reviewing": reviewing[:max(5, len(watch) + 2)], "positions": positions,
+            "needs_review": review, "us_sources_note": note}
 
 
 app.include_router(api)
@@ -750,6 +1080,9 @@ app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=os.envi
 @app.on_event("startup")
 async def startup():
     await ensure_sources()
+    await db.alerts.create_index("key", unique=True)
+    await db.setups.create_index("ext_key", sparse=True)
+    app.state.bg = asyncio.create_task(background_loop())
 
 
 @app.on_event("shutdown")

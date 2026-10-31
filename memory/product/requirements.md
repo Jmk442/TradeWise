@@ -44,3 +44,10 @@ Invalid ticker/price inputs, stale/incomplete data, API failures and loading sta
 
 ## Seed Data
 None unless prominently labelled demo.
+
+## Round 2 (user's words)
+Telegram Connect: Connect Telegram or Discord channels live so setups arrive automatically
+ASX Watchlist: Let him pick his own ASX stocks to review, so the list isn't thin
+Price Alerts: Add alerts when a followed stock hits his target or stop level
+Live Calendar: Add an economic and earnings calendar so Today shows scheduled events that affect his stocks.
+And have an explanation of the app features

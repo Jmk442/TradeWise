@@ -2,6 +2,7 @@ import { NavLink } from "react-router-dom";
 import { Sun, Moon, Sunrise, LineChart, Users, NotebookPen, BookOpen } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { SessionStrip } from "@/components/SessionStrip";
+import { AlertsBell } from "@/components/AlertsBell";
 
 const TABS = [
   { to: "/", label: "Today", icon: Sunrise, id: "today" },
@@ -45,6 +46,7 @@ export const Header = () => {
         </nav>
         <div className="ml-auto flex items-center gap-2">
           <MarketSwitch />
+          <AlertsBell />
           <button data-testid="theme-toggle" aria-label="Toggle light or dark mode" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
             className="grid h-11 w-11 place-items-center rounded-full border text-muted-foreground transition-colors hover:text-foreground">
             {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}

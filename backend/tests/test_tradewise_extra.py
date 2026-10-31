@@ -33,7 +33,10 @@ def test_future_published_setup_not_verified():
     p = S.get(f"{API}/quote/AAPL", params={"market": "US"}).json()["price"]
     s = S.post(f"{API}/setups", json={"source_id": src["id"], "source_name": src["name"], "ticker": "AAPL", "market": "US",
                                        "reported_text": "TEST future", "entry": p, "source_url": "https://x",
-                                       "published_at": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()}).json()
+                                       "published_at": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()})
+    if s.status_code == 422:  # rejected outright (accepted behaviour)
+        return
+    s = s.json()
     S.delete(f"{API}/setups/{s['id']}")
     assert s["status"] != "Source verified", "future-dated setup was labelled Source verified"
 

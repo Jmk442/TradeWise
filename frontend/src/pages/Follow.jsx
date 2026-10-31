@@ -11,6 +11,7 @@ import { useApp } from "@/context/AppContext";
 import { Section, Loading, ErrorNote, Empty, StatusLabel, Field, Why } from "@/components/Bits";
 import { SetupDialog } from "@/components/SetupDialog";
 import { TradeDialog } from "@/components/TradeDialog";
+import { ChannelsPanel } from "@/components/ChannelsPanel";
 
 const Scorecard = ({ source, onClose }) => {
   const [d, setD] = useState(null);
@@ -192,7 +193,7 @@ export default function Follow() {
             </div>
           ))}
         </div>
-        {market === "ASX" && <p className="mt-3 text-xs text-muted-foreground" data-testid="follow-asx-note">These sources mainly discuss US stocks. Their commentary isn't evidence about ASX stocks.</p>}
+        {market === "ASX" && <p className="mt-3 text-xs text-muted-foreground" data-testid="follow-asx-note">Sources marked "covers US" mainly discuss US stocks. Their commentary isn't evidence about ASX stocks. Connect an ASX-focused channel below for ASX setups.</p>}
       </Section>
 
       <Section title={`Logged setups (${market})`} eyebrow="Freshness checked against latest delayed price" testid="setups-section"
@@ -226,7 +227,11 @@ export default function Follow() {
         )}
       </Section>
 
-      <Section title="Import from Telegram / Discord" eyebrow="Optional" testid="import-section">
+      <Section title="Live channels" eyebrow="Telegram & Discord · setups arrive automatically" testid="channels-section">
+        <ChannelsPanel onImported={loadSetups} />
+      </Section>
+
+      <Section title="Paste from Telegram / Discord" eyebrow="Optional · one-off import" testid="import-section">
         <ImportPanel onPick={fromImport} />
       </Section>
 

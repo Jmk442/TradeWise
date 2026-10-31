@@ -6,6 +6,7 @@ import { useApp } from "@/context/AppContext";
 import { Section, Loading, ErrorNote, Empty, DelayedBadge, StatusLabel, Why } from "@/components/Bits";
 import { PriceChart } from "@/components/PriceChart";
 import { useNow, countdown } from "@/components/SessionStrip";
+import { Watchlist, CalendarPanel } from "@/components/Watchlist";
 
 const OpenWindow = ({ session, fh, market }) => {
   const now = useNow(1000);
@@ -111,7 +112,7 @@ const Reviewing = ({ items, market }) => {
       {items.map((r) => (
         <button key={r.ticker} onClick={() => nav(`/analyse?ticker=${r.ticker}`)} data-testid={`review-stock-${r.ticker}`}
           className="flex w-full items-start gap-3 p-4 text-left transition-colors hover:bg-secondary">
-          <div className="w-16 shrink-0 font-heading font-semibold">{r.ticker}</div>
+          <div className="w-16 shrink-0 font-heading font-semibold">{r.ticker}{r.watch && <span className="mt-0.5 block text-[10px] font-medium uppercase text-primary">Watchlist</span>}</div>
           <div className="min-w-0 flex-1">
             <div className="text-sm">{r.why}</div>
             <div className="text-xs text-muted-foreground">{r.uncertainty} · data {ago(r.freshness)}</div>
@@ -173,6 +174,7 @@ export default function Today() {
         <div>
           <div className="tw-eyebrow">{market === "ASX" ? "ASX · AUD" : "US equities · USD"}</div>
           <h1 className="font-heading text-3xl font-bold tracking-tight sm:text-4xl">Today</h1>
+          <Link to="/learn#guide" className="text-xs text-primary hover:underline" data-testid="how-it-works-link">How TradeWise works</Link>
         </div>
         <button onClick={load} data-testid="today-refresh" className="flex h-11 items-center gap-2 rounded-full border px-4 text-sm text-muted-foreground hover:text-foreground">
           <RefreshCw size={14} className={busy ? "animate-spin" : ""} /> Refresh
@@ -211,8 +213,14 @@ export default function Today() {
             )}
             <Why testid="why-watching" text="TradeWise lists published ideas from candidate sources. It doesn't know if these traders are profitable, and an idea isn't a recommendation." />
           </Section>
-          <Section title="Stocks worth reviewing" eyebrow="Not guaranteed opportunities" testid="reviewing-section" delay={140}>
+          <Section title="Stocks worth reviewing" eyebrow="Your watchlist first · not guaranteed opportunities" testid="reviewing-section" delay={140}>
             <Reviewing items={d.reviewing} market={market} />
+          </Section>
+          <Section title={`My ${market} watchlist`} eyebrow="Pick your own stocks · set alert levels" testid="watchlist-section" delay={170}>
+            <Watchlist onChanged={load} />
+          </Section>
+          <Section title="Scheduled events" eyebrow="Earnings, dividends and economic releases" testid="calendar-section" delay={190}>
+            <CalendarPanel refresh={d.overview.fetched_at} />
           </Section>
           <Section title="My positions" eyebrow="Actual trades you recorded" testid="positions-section" delay={200}>
             <Positions items={d.positions} />

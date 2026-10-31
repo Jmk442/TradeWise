@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 const TOPICS = [
@@ -40,13 +42,39 @@ const TOPICS = [
   ]],
 ];
 
+const GUIDE = [
+  ["Today", "Your 15-second check. Shows ASX and US status in Sydney time, a countdown to the open and to the end of the first hour, how the index moved in its first hour, setups from sources you follow (only if verified), your watchlist, scheduled events and your open positions. Tap ASX/US at the top to switch."],
+  ["Watchlist & alerts", "Add your own stocks on Today. Set 'rises to' or 'falls to' levels on any of them. Open trades with a stop or target get alerts automatically. Alerts are checked every 2 minutes on delayed prices and appear under the bell. You can turn on browser notifications there."],
+  ["Scheduled events", "Earnings and dividend dates for your watchlist and open trades, plus this week's medium/high-impact economic releases (AUD for ASX, USD for US). US/China events shown on ASX are labelled as indirect."],
+  ["Analyse → Check my buy", "Type a ticker and tap Check it. Add entry, quantity, stop and target if you have them. You get what looks positive, what could go wrong, what might happen next, what to check, three scenarios with what would prove each wrong, dollar outcomes and key levels. Each assessment is saved automatically."],
+  ["Analyse → What would have happened", "Pick a past date/time and see how a trade would have played out, using only information available then. Includes fees and slippage, and whether your stop or target was hit."],
+  ["Analyse → Saved assessments", "Reopen an old assessment to compare it with today's price and see which scenario is playing out."],
+  ["Follow", "Choose which candidate sources to follow and see their latest videos. Log setups exactly as published. Each one gets a freshness label: Source verified, Awaiting current market data, Original conditions no longer observed, Setup requires review, or Historical example only. The evidence scorecard shows how complete a source's records are."],
+  ["Live channels", "Connect public Telegram channels by name. Private Telegram and Discord need a bot token. New messages with an explicit ticker become setups automatically, linked to the original message, and are marked for the market you choose."],
+  ["My Trades", "Record actual trades (placed with your broker), practice trades and hypothetical ones. They are kept separate. Open trades show estimated P&L at the delayed price. Realised P&L appears only when you record the actual exit."],
+  ["What TradeWise won't do", "Place orders, invent setups or probabilities, rank traders by claimed profit, or treat US commentary as relevant to ASX stocks."],
+];
+
 export default function Learn() {
+  const { hash } = useLocation();
+  useEffect(() => { if (hash) document.querySelector(hash)?.scrollIntoView({ behavior: "smooth" }); }, [hash]);
   return (
     <div className="space-y-8" data-testid="learn-page">
       <div>
         <div className="tw-eyebrow">Optional reading</div>
         <h1 className="font-heading text-3xl font-bold tracking-tight sm:text-4xl">Learn</h1>
         <p className="mt-2 max-w-xl text-sm text-muted-foreground">Short explanations you can dip into any time. Nothing here is required.</p>
+      </div>
+      <div id="guide" className="tw-card scroll-mt-32" data-testid="app-guide">
+        <h2 className="font-heading text-lg font-semibold">How TradeWise works</h2>
+        <Accordion type="single" collapsible>
+          {GUIDE.map(([q, a], i) => (
+            <AccordionItem key={q} value={q}>
+              <AccordionTrigger className="text-left text-sm" data-testid={`guide-item-${i}`}>{q}</AccordionTrigger>
+              <AccordionContent className="text-sm text-muted-foreground">{a}</AccordionContent>
+            </AccordionItem>
+          ))}
+        </Accordion>
       </div>
       <div className="grid gap-6 md:grid-cols-2">
         {TOPICS.map(([id, title, items]) => (

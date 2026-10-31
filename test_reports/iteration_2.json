@@ -1,0 +1,52 @@
+{
+  "summary": "Round 2 E2E test (backend + frontend). New pytest file test_tradewise_round2.py has 20 tests and all pass. They cover: watchlist CRUD, 409 on duplicate, invalid ticker, above/below 422 validation, clear level, separate US list, watchlist shown first in Today reviewing, 404s; alerts created exactly once for a long target and a short stop, mark seen; calendar shape for ASX and US; channels (tokens false, Discord and TG-bot 422, invalid and non-existent handle 422, connect public 'durov', sync, toggle, delete, 404 after delete); paste parser. Regression suites test_tradewise_api.py and test_tradewise_extra.py: 29/29 pass after one test was updated, because a future published_at now returns 422, which is accepted behaviour. UI checks that passed: the Today watchlist add, duplicate, invalid and level toasts, levels persisting on blur, remove, and the US list with an AAPL earnings event shown in the calendar; calendar-panel; the alerts bell count, the panel list, the browser-notify-toggle, and the count clearing after close; how-it-works-link going to /learn#guide with the guide visible and 10 guide-item accordions; channels-section (token-needed + Connect disabled for Discord/TG bot, error toasts, connect durov, Check now, the active toggle, delete); the paste parser; and the Analyse, Trades, Follow and Learn pages loading with no page errors. Mobile 390px layout is OK. No critical bugs. Several minor issues are listed below.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/channels", "issue": "No duplicate check. Connecting the same handle twice creates 2 channels that both sync. Because ext_key includes the channel id, the same messages get imported twice as duplicate setups. Return 409 when platform+mode+normalised handle already exists."},
+      {"endpoint": "POST /api/channels (handle given as a URL)", "issue": "channels.telegram_public accepts 'https://t.me/durov' because it strips the URL internally. add_channel, however, stores the raw handle: source slug 'telegram-https://t.me/durov', url 'https://t.me/https://t.me/durov'. Normalise the handle (lstrip '@', take the last path segment) before building the Channel and the Source."},
+      {"endpoint": "DELETE /api/channels/{id}", "issue": "The Source document created on connect (feed_type Telegram/Discord) is never removed, so deleted channels stay in the Follow sources list. Also, re-connecting the same handle under a new display name reuses the old source (with the old name) via the slug."},
+      {"endpoint": "DELETE /api/trades/{id}, DELETE /api/watchlist/{id}", "issue": "Alerts referencing the deleted trade or watch item remain and still show in the bell (e.g. 'CBA · Practice trade hit target' after the trade was deleted). Delete the alerts by ref_id on delete, or filter them out in GET /alerts."},
+      {"endpoint": "POST /api/alerts/check vs background_loop", "issue": "check_alerts reads the existing keys and then inserts. Two concurrent runs (manual check + 120s loop) can both insert the same key. The unique index then raises DuplicateKeyError, which gives a 500 or a logged loop error. Use update_one(..., upsert=True) with $setOnInsert, or catch DuplicateKeyError. This was not reproduced in 3 parallel calls; it is a code-level race."},
+      {"endpoint": "background_loop", "issue": "Channel syncs run in a single try. A non-ChannelError (e.g. a Setup validation error or a parse exception) in one channel skips all the remaining channels for that cycle. Wrap each sync_channel in its own try."},
+      {"endpoint": "calendar_data._yahoo_client", "issue": "When the crumb is refreshed, the old AsyncClient is never closed (leak). Concurrent company_events calls in asyncio.gather can each create their own client/crumb (the log shows multiple getcrumb calls)."},
+      {"endpoint": "GET /api/calendar ASX / watchlist next_event", "issue": "Not a code bug. For ASX names, Yahoo only returns the last (past) earnings/ex-dividend dates (CBA 2026-08-11, WES 2026-08-26), so ASX users will almost always see 'No upcoming company event found'. Consider a note in the UI that ASX dates are only available close to reporting season."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Watchlist LevelInput", "issue": "After a rejected level (e.g. 'Rises to' 10 when the price is 76.69), the error toast shows but the invalid value stays in the input. The reload doesn't change `value` (null -> null), so the useEffect never resets it. Every later blur re-sends it and shows the same error again, and the user may think it was set. Reset v to value in the catch.", "selector": "[data-testid^=watch-above-], [data-testid^=watch-below-]", "priority": "MEDIUM"},
+      {"component": "Watchlist add input", "issue": "The `uppercase` class also uppercases the placeholder, so on mobile it shows 'ADD A ASX STOCK, E.G. WES' truncated. There's also a grammar slip: 'a ASX' should be 'an ASX'. Use placeholder:normal-case.", "selector": "[data-testid=watch-add-input]", "priority": "LOW"},
+      {"component": "WatchRow delete / ChannelRow sync/delete/toggle", "issue": "These calls have no try/catch, so a failed request (e.g. 404, network) gives an unhandled promise rejection with no toast.", "selector": "[data-testid^=watch-remove-], [data-testid^=channel-sync-], [data-testid^=channel-delete-]", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Alerts bell", "issue": "Shows alerts for trades and watch items that have already been deleted (backend orphan alerts).", "affected_selectors": ["[data-testid=alerts-panel]"]}
+    ],
+    "design_issues": [
+      {"screen": "Follow > Live channels", "issues": ["The 'Setups apply to' market field is a native <select>. Every other choice uses pill buttons or shadcn; consider a shadcn Select for consistency."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_tradewise_round2.py", "/app/backend/tests/test_tradewise_api.py", "/app/backend/tests/test_tradewise_extra.py", "/app/test_reports/pytest/pytest_round2.xml", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Return 409 on a duplicate channel connect, and normalise the Telegram handle (strip @ / t.me URL) before saving the channel and source",
+    "Delete the auto-created Source when its channel is deleted, or at least not leave orphan TEST/old sources",
+    "Delete or ignore alerts whose trade/watch item was deleted",
+    "Make the alert insert idempotent (upsert or catch DuplicateKeyError); wrap each channel sync in its own try in background_loop",
+    "Watchlist LevelInput: reset to the saved value after a 422",
+    "Minor: placeholder casing/grammar in watch-add-input; add try/catch + toasts for the watch remove and channel sync/delete/toggle calls; close the old httpx client in _yahoo_client"
+  ],
+  "critical_code_review_comments": [
+    "server.py is now 1077 lines (well over 700). Split it into routers: market, analyse, follow/setups, channels, trades, watchlist/alerts, calendar, today",
+    "today(): mk.normalize(t, market) on trending symbols is still not wrapped in try/except (it carries over from iteration 1)",
+    "add_watch: the duplicate check runs after the Yahoo quote call; check the DB first to save the Yahoo call (rate limits)",
+    "PATCH /api/channels/{id} takes `active` as a query param rather than a JSON body (inconsistent with the other PATCH endpoints)"
+  ],
+  "updated_files": ["/app/backend/tests/test_tradewise_round2.py (new)", "/app/backend/tests/test_tradewise_extra.py (future published_at test now accepts 422)"],
+  "success_rate": {"backend": "100% (49/49 pytest), with 8 minor code-level/edge issues", "frontend": "~95% (all requested flows work; minor LevelInput reset bug)"},
+  "test_credentials": "No auth; none needed.",
+  "seed_data_creation": "All test data was cleaned up: watchlist, trades and channels are empty. All alerts were deleted (only test alerts existed). TEST_* Telegram sources were removed directly in Mongo because there is no API for that.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n 0 (pytest.ini enables xdist). The system date is Sat 2026-10-31, both markets closed. ForexFactory economic is empty on weekends. ASX company events are past dates, so they're filtered out; US AAPL has earnings on 2026-11-02, which is useful for checking the calendar. Telegram public 'durov' works (last_message_id ~552, 0 setups imported since it has no tickers). A sonner toast disappears quickly, so wait on [data-sonner-toast] instead of using a fixed sleep. The alerts popover fades in, so wait ~1s before taking a screenshot.",
+  "rca of the issue": "Orphan sources and duplicate channels: add_channel builds the slug from the raw body.handle and never checks db.channels for an existing handle; delete_channel only deletes the channel doc. LevelInput stale value: useEffect([value]) does not fire when the reloaded value is identical (null), so the local state keeps the rejected input."
+}
