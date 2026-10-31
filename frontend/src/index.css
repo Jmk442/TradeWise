@@ -1,0 +1,126 @@
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    :root {
+        --background: 210 40% 98%;
+        --foreground: 222 47% 11%;
+        --card: 0 0% 100%;
+        --card-foreground: 222 47% 11%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 222 47% 11%;
+        --primary: 175 84% 32%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 210 40% 96%;
+        --secondary-foreground: 222 47% 11%;
+        --muted: 210 40% 96%;
+        --muted-foreground: 215 19% 35%;
+        --accent: 214 32% 91%;
+        --accent-foreground: 222 47% 11%;
+        --destructive: 347 77% 50%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 213 27% 84%;
+        --input: 213 27% 84%;
+        --ring: 175 84% 32%;
+        --up: 161 94% 30%;
+        --down: 347 77% 50%;
+        --warn: 32 95% 44%;
+        --radius: 0.75rem;
+    }
+    .dark {
+        --background: 220 29% 6%;
+        --foreground: 210 40% 96%;
+        --card: 220 28% 10%;
+        --card-foreground: 210 40% 96%;
+        --popover: 221 30% 13%;
+        --popover-foreground: 210 40% 96%;
+        --primary: 173 80% 40%;
+        --primary-foreground: 220 29% 6%;
+        --secondary: 221 30% 15%;
+        --secondary-foreground: 210 40% 96%;
+        --muted: 221 30% 15%;
+        --muted-foreground: 215 20% 65%;
+        --accent: 221 29% 19%;
+        --accent-foreground: 210 40% 96%;
+        --destructive: 350 89% 60%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 219 29% 20%;
+        --input: 219 29% 22%;
+        --ring: 172 66% 50%;
+        --up: 160 84% 39%;
+        --down: 350 89% 60%;
+        --warn: 38 92% 50%;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+    body {
+        @apply bg-background text-foreground antialiased;
+        font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+    }
+    h1, h2, h3, h4, .font-heading {
+        font-family: "Outfit", system-ui, sans-serif;
+    }
+    .font-mono, .num {
+        font-family: "JetBrains Mono", monospace;
+        font-variant-numeric: tabular-nums;
+    }
+    ::selection {
+        background: hsl(var(--primary) / 0.35);
+    }
+}
+
+@layer components {
+    .tw-card {
+        @apply rounded-xl border bg-card p-4 sm:p-5;
+    }
+    .tw-eyebrow {
+        @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground;
+    }
+    .rise {
+        animation: rise 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    }
+}
+
+@keyframes rise {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+}
+
+@layer base {
+    [data-debug-wrapper="true"] {
+        display: contents !important;
+    }
+
+    [data-debug-wrapper="true"] > * {
+        margin-left: inherit;
+        margin-right: inherit;
+        margin-top: inherit;
+        margin-bottom: inherit;
+        padding-left: inherit;
+        padding-right: inherit;
+        padding-top: inherit;
+        padding-bottom: inherit;
+        column-gap: inherit;
+        row-gap: inherit;
+        gap: inherit;
+        border-left-width: inherit;
+        border-right-width: inherit;
+        border-top-width: inherit;
+        border-bottom-width: inherit;
+        border-left-style: inherit;
+        border-right-style: inherit;
+        border-top-style: inherit;
+        border-bottom-style: inherit;
+        border-left-color: inherit;
+        border-right-color: inherit;
+        border-top-color: inherit;
+        border-bottom-color: inherit;
+    }
+}

@@ -1,0 +1,55 @@
+{
+  "summary": "First full E2E run of TradeWise (backend + frontend). Backend: 29 pytest cases run, 27 passed. Today (ASX default, loads in <1s), the session strip, the market switch, the countdown and the first-hour move all work. Analyse > Check my buy (GPT, ~15-25s) shows every report block, and the Why toggles and record buttons work. The invalid-ticker error and the 422 on stop >= entry both work. 'What would have happened', saved assessments with comparison, Follow (sources, toggles, scorecard, YouTube feed, log setup from a feed item, copy to practice, outcome, delete, Telegram paste import), My Trades groups/close flow/validation, Learn accordions, theme toggle and mobile bottom nav all work. Two real bugs: (1) historical intraday leaks today's live bar into the result, (2) future-dated setups get 'Source verified'. There are also some timezone-handling problems.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/historical (horizon=same_day, intraday path)", "issue": "Yahoo's period1/period2 5m chart appends the current live bar (regularMarketTime, e.g. 2026-10-30 16:12) after the decision-day bars. server.py only filters c['t'] >= dt, so that bar becomes after[-1]. Result: the 'end of window' exit is TODAY's price, exit_at is a different day (BHP decision 2026-10-21 10:30 -> exit_at 2026-10-30T16:12), and low/high/move_pct/P&L are wrong. Saving it as hypothetical stores the wrong exit. FIX: also filter c['t'] <= day_close.timestamp() (and in the daily path drop bars dated after the window / with v==0 beyond the last real session).", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/setups + freshness()", "issue": "published_at in the future (e.g. +30 days) gives a negative age_h, so the setup is labelled 'Source verified' and can appear on Today watching. Reject future timestamps, or label them 'Setup requires review'."},
+      {"endpoint": "POST /api/assess", "issue": "Stop/target sanity checks run only for long trades (short with stop <= entry or target >= entry is accepted). They also run AFTER the Yahoo quote, 6mo chart and news fetches; validate first to avoid wasted calls under rate limits."},
+      {"endpoint": "POST/PATCH /api/trades", "issue": "entry_time/exit_time are stored as naive strings (e.g. '2026-10-30T10:15'), while historical-saved trades store tz-aware ISO. The UI labels the input 'Market local time', but stamp() renders the value in the browser timezone. A US trade entered at 10:15 NY time shows as 10:15 Sydney. Normalise with parse_dt(market) to tz-aware ISO on save."},
+      {"endpoint": "TradeUpdate", "issue": "stop/target have no gt=0 validation (TradeIn does)."},
+      {"endpoint": "DELETE /api/trades/{id}, /api/setups/{id}", "issue": "Returns ok:true even when nothing was deleted (should 404)."},
+      {"endpoint": "Hypothetical save from historical", "issue": "The saved trade's realised P&L (-112) ignores the fees + slippage shown in the result (net -143.62). Store the fees or show the net."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "SessionStrip (mobile 390px)", "issue": "The US session pill is cut off and needs a horizontal scroll, so on mobile both markets' status are not visible at once (requirement: show both sessions). Wrap or shorten the pills.", "selector": "[data-testid=session-pill-us]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [
+      {"flow": "Analyse > What would have happened", "issue": "Shows the wrong exit/P&L because of the backend live-bar leak (exit dated 9 days after the decision on a 'Rest of that day' horizon). The chart x-axis also extends to that bar.", "affected_selectors": ["[data-testid=hist-result]", "[data-testid=hist-save-button]"]},
+      {"flow": "Follow > Log setup from a US feed item while on ASX", "issue": "The setup is saved as a US setup (correct), but the list is filtered to the current market (ASX), so after the success toast nothing appears. Mention in the toast which market it went to, or switch the market.", "affected_selectors": ["[data-testid=setup-save-button]"]},
+      {"flow": "Copy to Practice Journal", "issue": "Opens the TradeDialog with entry = latest price (not the setup's reported entry) and an empty quantity. Save stays disabled with no hint that quantity is required.", "affected_selectors": ["[data-testid^=copy-practice-]", "[data-testid=trade-save-button]"]}
+    ],
+    "design_issues": [
+      {"screen": "Analyse / TradeDialog / SetupDialog / HistoricalCheck", "issues": ["Date-time inputs use the browser's native datetime-local picker instead of a shadcn Calendar/Popover"]},
+      {"screen": "Today index chart, Historical chart, timestamps", "issues": ["Chart axes and 'data as of' are rendered in the browser timezone, not Sydney or the market timezone. In a non-Sydney browser the ASX session shows 11:35 PM-05:12 AM. Pass timeZone:'Australia/Sydney' (or the market tz) to the formatters, consistent with the 'Sydney time' strip."]},
+      {"screen": "Today mobile", "issues": ["On mobile the open-window countdown card sits below the large market card; the countdown is the key highlight and could go first."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_tradewise_api.py", "/app/backend/tests/test_tradewise_extra.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Fix /api/historical intraday: drop candles after the decision day's close (the live bar leak gives a wrong exit/P&L)",
+    "Treat future published_at as not verified in freshness() (or reject it with 422)",
+    "Add short-direction stop/target validation to /api/assess and run the validation before the Yahoo fetches",
+    "Store trade entry/exit times as tz-aware ISO in the market timezone; render timestamps and chart axes in Sydney/market tz",
+    "Make both session pills visible on mobile",
+    "Optional: replace native datetime-local inputs with a shadcn date-time picker; give feedback when a feed-logged setup lands in the other market; hint that quantity is required in the TradeDialog"
+  ],
+  "critical_code_review_comments": [
+    "server.py is 728 lines (>700); split it into routers (market, analyse, follow, trades, today)",
+    "historical(): `before` daily chart with period2=dt may also include the appended live bar on some symbols. Filter `t < dt` to guarantee no look-ahead",
+    "feeds.PATTERNS 'entry' includes the bare word 'in', which can mis-parse text like 'in 5 min'",
+    "today(): mk.normalize(t, market) on trending symbols is not wrapped in try/except, so an odd Yahoo symbol could 500 the Today endpoint",
+    "There is no endpoint to delete assessments (test assessments remain in the DB)"
+  ],
+  "updated_files": ["/app/backend/tests/test_tradewise_api.py", "/app/backend/tests/test_tradewise_extra.py"],
+  "success_rate": {"backend": "93% (27/29)", "frontend": "~92% (all flows work; the historical result is wrong because of the backend bug)"},
+  "test_credentials": "No auth in the app; none needed.",
+  "seed_data_creation": "TEST trades and setups were created and then deleted (trades and setups collections are now empty). 3-4 assessments (BHP, CBA) remain because there is no delete endpoint. Source follow toggles were restored to all followed.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n 0 (xdist is installed and the tests share state). The system date is 2026-10-31 (Saturday, both markets closed). test_tradewise_extra.py has 2 tests that fail until the historical live-bar leak and future published_at bugs are fixed. AI assess took ~15-25s. Market selection is persisted in localStorage per browser context (defaults to ASX). The TradeDialog kind/status buttons have testids trade-kind-*, trade-status-*, trade-direction-*. The setup outcome is a native <select>.",
+  "rca of the issue": "Historical bug: Yahoo /v8/finance/chart with period1/period2 and a 5m interval returns the decision-day bars plus one extra synthetic bar at meta.regularMarketTime (the current price, v=0). server.py line ~375 filters only the lower bound (c['t'] >= dt), so the extra bar is kept as after[-1] and used as exit_price/exit_t. Reproduce: POST /api/historical {ticker:'BHP', market:'ASX', decision_at:'2026-10-21T10:30'} gives exit_at 2026-10-30T16:12+11:00. Mitigation: after = [c for c in after if dt.timestamp()-1 <= c['t'] <= day_close.timestamp()]."
+}

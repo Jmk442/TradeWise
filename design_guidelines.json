@@ -1,0 +1,143 @@
+{
+  "project_name": "TradeWise",
+  "app_type": "dashboard",
+  "theme_strategy": {
+    "default_mode": "dark",
+    "supported_modes": ["dark", "light"],
+    "tone": "Direct, calm, concise, professional, no hype, no false certainty, highly legible, teenage-friendly yet mature",
+    "aesthetic_archetype": "Performance Pro + Swiss High-Contrast hybrid with Tactical Teal accents"
+  },
+  "colors": {
+    "dark": {
+      "bg_primary": "#0B0E14",
+      "bg_secondary": "#131822",
+      "bg_surface": "#1A2130",
+      "bg_surface_hover": "#222B3E",
+      "border": "#283348",
+      "border_subtle": "#1E2738",
+      "text_main": "#F1F5F9",
+      "text_muted": "#94A3B8",
+      "text_faint": "#64748B",
+      "brand_teal": "#14B8A6",
+      "brand_teal_glow": "rgba(20, 184, 166, 0.15)",
+      "brand_teal_light": "#2DD4BF",
+      "accent_emerald": "#10B981",
+      "accent_rose": "#F43F5E",
+      "accent_amber": "#F59E0B",
+      "accent_cyan": "#06B6D4"
+    },
+    "light": {
+      "bg_primary": "#F8FAFC",
+      "bg_secondary": "#FFFFFF",
+      "bg_surface": "#F1F5F9",
+      "bg_surface_hover": "#E2E8F0",
+      "border": "#CBD5E1",
+      "border_subtle": "#E2E8F0",
+      "text_main": "#0F172A",
+      "text_muted": "#475569",
+      "text_faint": "#94A3B8",
+      "brand_teal": "#0D9488",
+      "brand_teal_glow": "rgba(13, 148, 136, 0.12)",
+      "brand_teal_light": "#14B8A6",
+      "accent_emerald": "#059669",
+      "accent_rose": "#E11D48",
+      "accent_amber": "#D97706",
+      "accent_cyan": "#0891B2"
+    }
+  },
+  "typography": {
+    "font_family_heading": "Outfit, system-ui, sans-serif",
+    "font_family_body": "Plus Jakarta Sans, system-ui, sans-serif",
+    "font_family_mono": "JetBrains Mono, monospace",
+    "scale": {
+      "h1": "text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight",
+      "h2": "text-xl sm:text-2xl font-semibold tracking-tight",
+      "h3": "text-lg font-medium",
+      "body": "text-sm sm:text-base leading-relaxed",
+      "caption": "text-xs font-medium tracking-wide text-slate-400"
+    }
+  },
+  "layout_and_navigation": {
+    "header": {
+      "sticky": true,
+      "height": "h-16",
+      "components": [
+        "Brand logo 'TradeWise' with tactical teal badge",
+        "Market Region Switch (ASX 🇦🇺 vs US 🇺🇸 with real-time open/closed status)",
+        "Tab Navigation bar (Today, Analyse, Follow, My Trades, Learn)",
+        "Theme Toggle (Dark/Light)",
+        "Quick Status Indicator (P&L summary & Active Positions count)"
+      ]
+    },
+    "mobile": "Bottom navigation bar for 5 key tabs with high tap target (min 44px) + responsive drawer for extra actions",
+    "desktop": "Top sticky navigation bar with glassmorphism backdrop (backdrop-blur-md bg-opacity-80)"
+  },
+  "tabs_specification": {
+    "today": {
+      "sections": [
+        "Market Status Banner: Market index trends (S&P 500 / ASX 200), VIX volatility meter, upcoming catalyst events (CPI, Fed, Earnings), last updated timestamp",
+        "What Traders Are Watching: Up to 3 curated setups (Ticker, Trader name, concise reasoning, price condition, risk level, source badge, freshness timestamp)",
+        "Stocks Worth Reviewing: Filterable list with volume spike indicators, RVOL, key support/resistance proximity",
+        "My Positions: Active holdings summary with live simulated price, P&L, stop distance visual gauge",
+        "Quick Actions Bar: Log Trade, Run AI Analysis, Import Setup, Review Flagged Trades",
+        "Trades Needing Review: Flagged trades from previous sessions requiring post-trade notes or review"
+      ]
+    },
+    "analyse": {
+      "sections": [
+        "Interactive Trade Analysis Form: Ticker, Direction (Long/Short), Entry Price, Quantity, Target, Stop Loss, Date, Notes, Setup Category",
+        "AI Assessment Engine: What Looks Positive, What Could Go Wrong, What Might Happen Next, What to Check Before Deciding",
+        "Scenario Generator: Bullish / Base / Bearish probabilities with interactive price target visualization",
+        "Key Levels & Catalysts: Support/Resistance table, news Sentiment summary, Uncertainty Meter",
+        "Expandable 'Why?' Deep-Dive Accordion: Transparent AI reasoning breakdown without technical jargon",
+        "Save Assessment CTA & Copy to Practice Journal button",
+        "What Would Have Happened (Historical Backtest Check): Select past trade entry date to evaluate outcome against historical candles"
+      ]
+    },
+    "follow": {
+      "sections": [
+        "Trader Source Toggles: TraderTV Live, SMB Capital, Bear Bull Traders (toggle on/off feed filtering)",
+        "Latest Feed Stream: Setup cards with freshness status labels ('Fresh - 8m ago', 'Developing - 1h ago', 'Stale - 4h ago')",
+        "Evidence Scorecard: Visual meter for Risk/Reward ratio, Catalyst strength, Trend confluence, Volume confirmation",
+        "Telegram / Discord Paste Import Tool: Raw text parser that auto-extracts Ticker, Entry, Stop, Target, Reasoning from pasted trader messages",
+        "Manual Setup Entry Modal",
+        "One-click 'Copy to Practice Journal'"
+      ]
+    },
+    "my_trades": {
+      "sections": [
+        "Trade Type Segmentation Tabs: All Trades | Actual Account | Simulated / Paper | Hypothetical",
+        "Performance Summary Bar: Total P&L, Win Rate %, Average R:R Ratio, Total Trades, Best Setup Category",
+        "Interactive Trades Journal Table: Search, Filter by Type/Status/Ticker, Sort by Date/P&L",
+        "Detailed Trade Card / Modal: Entry, Exit, P&L, Risk/Reward achieved, AI Review badge, Strategy Tags, Retrospective reflection notes"
+      ]
+    },
+    "learn": {
+      "sections": [
+        "Category Filters: Risk & Position Sizing, Market Structure, Execution & VWAP, Trading Psychology & Discipline, Order Types",
+        "Article Cards: Bite-sized, direct concept guides (reading time ~2-3 mins, crisp key takeaways, clear diagrams, zero jargon or hype)",
+        "Search & Saved Guides"
+      ]
+    }
+  },
+  "image_urls": {
+    "charts": [
+      "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzV8MHwxfHNlYXJjaHwxfHxzdG9jayUyMG1hcmtldCUyMGNoYXJ0JTIwdHJhZGluZyUyMHNjcmVlbnxlbnwwfHx8fDE3OTM0NDI0MDd8MA&ixlib=rb-4.1.0&q=85",
+      "https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzV8MHwxfHNlYXJjaHwzfHxzdG9jayUyMG1hcmtldCUyMGNoYXJ0JTIwdHJhZGluZyUyMHNjcmVlbnxlbnwwfHx8fDE3OTM0NDI0MDd8MA&ixlib=rb-4.1.0&q=85"
+    ],
+    "trader_avatars": [
+      "TraderTV Live: https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+      "SMB Capital: https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+      "Bear Bull Traders: https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80"
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Ensure the app is 100% action-first, modern, clean, and highly responsive.",
+    "Implement the 5 tabs clearly: Today, Analyse, Follow, My Trades, Learn.",
+    "Include Market Selection switch (ASX vs US) with state persistence across tabs.",
+    "Implement real working interactive forms, search filters, state persistence in localStorage/state so the user can test full user journeys.",
+    "Add 'data-testid' to all interactive controls (buttons, inputs, tabs, selects, cards).",
+    "Use Lucide icons for high quality visual indicators (e.g., TrendingUp, AlertTriangle, ShieldCheck, Zap, Activity, BookOpen, Clock, Target, ArrowUpRight).",
+    "Never execute real orders; clearly display disclaimers that TradeWise is an analytical decision support tool."
+  ]
+}
